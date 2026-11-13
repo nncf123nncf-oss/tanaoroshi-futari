@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>年末棚卸しの二人合算</title>
+<meta name="description" content="年末の在庫棚卸しを2人で手分けするお店向け。同じ棚リストでそれぞれの端末で数え、結果をLINEなどで送り合うと合算できます。2人とも数えた棚・まだ誰も数えていない棚が色で分かり、二重に数えた棚は採用を選ぶまで合計に入りません。">
+<style>
+:root{
+  --bg:#FAF6F7; --surface:#FFFFFF; --text:#22141A; --text2:#4D3540; --text3:#6B5560;
+  --accent:#7E2B45; --on-accent:#FFFFFF; --accent-weak:#F5E5EA; --border:#DCC8CF;
+  --danger:#B3261E;
+  --rv-bg:#FFF1D6; --rv-bd:#B7791F; --rv-tx:#6B4400;
+  --ok-bg:#E2F3E7; --ok-bd:#2E7D4A; --ok-tx:#1B5631;
+  --one-bg:#E3EEF8; --one-bd:#3A6E9E; --one-tx:#1F4E78;
+  --no-bg:#EEEBEC; --no-bd:#8A8285; --no-tx:#4F494B;
+  --diff:#FFE3E0;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#170F12; --surface:#22181C; --text:#F4EAEE; --text2:#D4C1C9; --text3:#B49DA7;
+    --accent:#EBA9BC; --on-accent:#2B0D17; --accent-weak:#36222A; --border:#46333B;
+    --danger:#F2B8B5;
+    --rv-bg:#3A2D12; --rv-bd:#E0B254; --rv-tx:#F5D79A;
+    --ok-bg:#16301F; --ok-bd:#6CC48C; --ok-tx:#A9E5BE;
+    --one-bg:#152838; --one-bd:#79AEDD; --one-tx:#B7D6F2;
+    --no-bg:#2A2427; --no-bd:#8F8589; --no-tx:#CFC5C9;
+    --diff:#4A2420;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto;padding:16px}
+header h1{font-size:23px;line-height:1.35;margin:4px 0 6px}
+header .lead{margin:0 0 12px;color:var(--text2)}
+.save-note{margin:0 0 12px;padding:8px 12px;border-left:4px solid var(--accent);background:var(--accent-weak);font-size:14px}
+.save-note .warn{display:block;color:var(--danger);font-weight:700}
+.tabs{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:8px 0;background:var(--bg)}
+.tabs button{min-height:52px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-weight:700;font-size:16px;cursor:pointer;padding:4px}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.tabs .num{display:block;font-size:12px;font-weight:400;line-height:1.2}
+.panel{padding:6px 0 0}
+h2{font-size:18px;margin:14px 0 8px;line-height:1.4}
+h3{font-size:17px;margin:0;line-height:1.4;min-width:0;overflow-wrap:anywhere}
+.box{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:12px;margin:0 0 12px}
+.empty{padding:16px;border:1px dashed var(--border);border-radius:12px;background:var(--surface);color:var(--text2)}
+.hint{color:var(--text2);font-size:14px;margin:6px 0 0}
+.err{color:var(--danger);font-weight:700;font-size:14px;margin:6px 0 0;white-space:pre-line}
+.okmsg{color:var(--ok-tx);font-weight:700;font-size:14px;margin:6px 0 0;white-space:pre-line}
+label.lbl{display:block;font-weight:700;margin:0 0 4px;font-size:15px}
+input[type=text],textarea{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:16px}
+input[type=text]{min-height:48px}
+textarea{min-height:120px;line-height:1.5;resize:vertical}
+textarea.code{min-height:84px;font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all}
+.btn{display:block;width:100%;min-height:52px;margin:10px 0 0;border:1px solid var(--accent);border-radius:12px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:16px;cursor:pointer;padding:6px 10px}
+.btn.sub{background:var(--surface);color:var(--text);border-color:var(--border)}
+.btn.danger{background:var(--surface);color:var(--danger);border-color:var(--danger);font-size:15px;min-height:48px}
+.btn:disabled{opacity:.45;cursor:default}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row2 .btn{margin-top:10px}
+.shelf-ed .top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.shelf-ed .del{min-height:48px;padding:0 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--danger);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.shelf-ed textarea{margin-top:8px}
+.parsed{font-size:13px;color:var(--text3);margin:4px 0 0}
+.sumlist{margin:6px 0 0;padding:0;list-style:none}
+.sumlist li{padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
+.sumlist li span:last-child{color:var(--text3);white-space:nowrap}
+
+/* 数える */
+.progress{font-weight:700;margin:4px 0 10px}
+.shelf{border:1px solid var(--border);border-radius:12px;background:var(--surface);margin:0 0 12px;overflow:hidden}
+.shelf.done{border:2px solid var(--ok-bd)}
+.shelf .head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;background:var(--accent-weak)}
+.shelf.done .head{background:var(--ok-bg)}
+.badge{flex:none;font-size:13px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text2);white-space:nowrap}
+.shelf.done .badge{border-color:var(--ok-bd);color:var(--ok-tx)}
+.item{display:grid;grid-template-columns:minmax(0,1fr) 44px 68px 44px;gap:6px;align-items:center;padding:8px 12px;border-top:1px solid var(--border)}
+.item .nm{min-width:0;overflow-wrap:anywhere;line-height:1.35}
+.item .pr{display:block;font-size:12px;color:var(--text3)}
+.item button{height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:20px;font-weight:700;cursor:pointer;padding:0}
+.item input{min-height:44px;height:44px;padding:4px 6px;text-align:center;font-size:18px;font-variant-numeric:tabular-nums}
+.item input[aria-invalid="true"]{border:2px solid var(--danger)}
+.shelf .foot{padding:10px 12px;border-top:1px solid var(--border)}
+.shelf .foot .btn{margin:0}
+.shelf.done .foot .btn{background:var(--surface);color:var(--ok-tx);border-color:var(--ok-bd)}
+.blanks{font-size:13px;color:var(--text2);margin:6px 0 0}
+
+/* 合算 */
+.status{display:grid;gap:6px;margin:0 0 12px}
+.st{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center;padding:8px 12px;border-radius:10px;border:1px solid;border-left-width:8px}
+.st .nm{font-weight:700;min-width:0;overflow-wrap:anywhere}
+.st .lb{font-weight:700;font-size:14px;white-space:nowrap}
+.st .who{grid-column:1 / -1;font-size:13px}
+.st.review{background:var(--rv-bg);border-color:var(--rv-bd);color:var(--rv-tx)}
+.st.adopted{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok-tx)}
+.st.one{background:var(--one-bg);border-color:var(--one-bd);color:var(--one-tx)}
+.st.none{background:var(--no-bg);border-color:var(--no-bd);color:var(--no-tx)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13px;color:var(--text2);margin:0 0 8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-1px;border:1px solid}
+.rvbox{border:2px solid var(--rv-bd);border-radius:12px;background:var(--surface);margin:0 0 12px;overflow:hidden}
+.rvbox .head{padding:10px 12px;background:var(--rv-bg);color:var(--rv-tx)}
+.rvbox .head strong{display:block;font-size:17px;color:var(--text)}
+.rvbox .head span{font-size:14px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-top:1px solid var(--border);text-align:right;vertical-align:top}
+th:first-child,td:first-child{text-align:left;overflow-wrap:anywhere}
+thead th{font-size:13px;color:var(--text2);background:var(--surface);border-top:0}
+tr.diff td{background:var(--diff)}
+tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)}
+.rvbox .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;border-top:1px solid var(--border)}
+.rvbox .acts .btn{margin:0;font-size:15px;min-height:52px}
+.same{font-size:13px;color:var(--text2);padding:6px 12px 0}
+.adopted-line{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;border:1px solid var(--ok-bd);border-radius:10px;background:var(--ok-bg);color:var(--ok-tx);margin:0 0 8px;font-weight:700;font-size:14px}
+.adopted-line button{min-height:44px;padding:0 12px;border:1px solid var(--ok-bd);border-radius:10px;background:var(--surface);color:var(--ok-tx);font:inherit;font-weight:700;cursor:pointer}
+.warnbar{padding:10px 12px;border-radius:10px;background:var(--rv-bg);border:1px solid var(--rv-bd);color:var(--rv-tx);font-weight:700;margin:0 0 10px}
+.totals{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden}
+.totals td .up{display:block;font-size:12px;color:var(--text3)}
+.totals tfoot td{font-weight:700;font-size:17px;border-top:2px solid var(--text)}
+.partner{font-size:14px}
+.partner b{font-size:15px}
+
+.note-fixed{margin:20px 0 0;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:14px;color:var(--text2)}
+.mw-footer{max-width:760px;margin:24px auto 0;padding:16px;border-top:1px solid var(--border);font-size:13px;color:var(--text2)}
+.mw-footer p{margin:4px 0}
+.mw-footer a{color:var(--accent)}
+[hidden]{display:none !important}
+
+#modal{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+#modal .mbox{background:var(--surface);color:var(--text);border-radius:14px;padding:18px;max-width:420px;width:100%}
+#modal p{margin:0;white-space:pre-line}
+#modal .row2{margin-top:14px}
+#modal button{min-height:52px;border-radius:10px;font:inherit;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+#modal button.danger{color:var(--danger);border-color:var(--danger)}
+.toast{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:70;max-width:calc(100% - 32px);padding:10px 16px;border-radius:10px;background:var(--text);color:var(--bg);font-weight:700;font-size:15px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>年末棚卸しの二人合算</h1>
+    <p class="lead">年末の在庫棚卸しを、2人で売り場と倉庫に分かれて数えるお店向けです。同じ棚リストでそれぞれの端末で数え、結果をLINEなどで送り合うと合算できます。2人とも数えた棚・まだ誰も数えていない棚が色で分かり、二重に数えた棚は、どちらの数を使うか選ぶまで合計に入りません。</p>
+  </header>
+  <p class="save-note">数と棚リストは、この端末のブラウザにだけ保存します。外には送りません。相手に渡るのは、あなたがコピーして送ったコードだけです。<span class="warn" id="saveWarn" hidden>この端末では保存できません（プライベートブラウズなど）。ページを閉じると入力した数は消えます。</span></p>
+
+  <nav class="tabs" role="tablist" aria-label="切り替え">
+    <button type="button" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="true">① 棚リスト<span class="num" id="numList">まだありません</span></button>
+    <button type="button" role="tab" id="tab-count" aria-controls="panel-count" aria-selected="false">② 数える<span class="num" id="numCount">—</span></button>
+    <button type="button" role="tab" id="tab-merge" aria-controls="panel-merge" aria-selected="false">③ 合算<span class="num" id="numMerge">—</span></button>
+  </nav>
+
+  <main>
+    <section class="panel" id="panel-list" role="tabpanel" aria-labelledby="tab-list"></section>
+    <section class="panel" id="panel-count" role="tabpanel" aria-labelledby="tab-count" hidden></section>
+    <section class="panel" id="panel-merge" role="tabpanel" aria-labelledby="tab-merge" hidden></section>
+  </main>
+
+  <p class="note-fixed">日々の在庫管理・発注・バーコードの読み取りはできません。2人で手分けする棚卸しの日のための道具です。合算は2人まで。同じ棚を左右に分けて別々に数えるときは、棚リストで棚の名前を分けて作ってください（同じ棚を2人とも数えると「要確認」になります）。</p>
+  <button type="button" class="btn danger" id="clearAll">この端末の棚卸しを全部消す</button>
+</div>
+
+<footer class="mw-footer">
+  <p>みちAIワークス（MICHI AI WORKS）／代表 田中　泉</p>
+  <p>運営: <a href="https://michi-portfolio.vercel.app/" rel="noopener">みちAIワークス 公式サイト</a>（https://michi-portfolio.vercel.app/ ）／ お問い合わせ: <a href="mailto:nncf123nncf@gmail.com">nncf123nncf@gmail.com</a></p>
+  <p>棚リスト・数・相手の結果は、お使いの端末のブラウザの中（localStorage）にだけ保存し、当サイトには送信しません。「この端末の棚卸しを全部消す」で消えます。コードはあなたがコピーして送ったときだけ相手に渡ります。アクセス解析（Cloudflare Web Analytics）で、ページの閲覧状況（閲覧数・参照元・ブラウザの種類など）を計測しています。</p>
+  <p>ログイン・会員登録・パスワードの入力を求めることはありません。</p>
+</footer>
+
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="modalText" hidden>
+  <div class="mbox">
+    <p id="modalText"></p>
+    <div class="row2"><button type="button" id="modalNo">やめる</button><button type="button" class="danger" id="modalYes">はい</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+  var KEY = 'tanaoroshi-futari-v1';
+  var LIM = { shelves: 40, items: 300, shelfName: 20, itemName: 30, price: 9999999, count: 999999, me: 10 };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- 小さな道具 ----------
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'text') e.textContent = attrs[k];
+      else if (k === 'cls') e.className = attrs[k];
+      else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) e.setAttribute(k, attrs[k] === true ? '' : attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c !== null && c !== undefined) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function clean(s, max) {
+    s = String(s == null ? '' : s).replace(/[\u0000-\u001F\u007F\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
+    return max ? Array.from(s).slice(0, max).join('') : s;
+  }
+  function z2h(s) { // 全角の数字・記号を半角に
+    return String(s).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/[，、]/g, ',').replace(/[￥]/g, '¥').replace(/[　]/g, ' ');
+  }
+  function yen(n) { return n.toLocaleString('ja-JP') + '円'; }
+  function num(n) { return n.toLocaleString('ja-JP'); }
+  function fnv(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(36);
+  }
+  function b64e(obj) {
+    var bytes = new TextEncoder().encode(JSON.stringify(obj)), bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function b64d(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  }
+  function makeCode(prefix, obj) { var body = b64e(obj); return prefix + '.' + body + '.' + fnv(body); }
+  // 貼られた文から、コードを探して中身を返す。{ok, kind, obj, msg}
+  function readCode(text) {
+    var t = z2h(String(text || '')).replace(/[\s　。．・「」『』"'“”‘’]/g, '');
+    var m = t.match(/TN([LR])1\.([A-Za-z0-9_-]+)\.([0-9a-z]+)/);
+    if (!m) return { ok: false, msg: 'コードが見つかりません。「TNL1.」または「TNR1.」で始まる文字を、全部コピーして貼ってください。' };
+    if (fnv(m[2]) !== m[3]) return { ok: false, msg: 'コードが途中で切れているか、文字が変わっています。送られてきたコードを、最初から最後まで全部コピーしてもう一度貼ってください。' };
+    var obj;
+    try { obj = b64d(m[2]); } catch (e) { return { ok: false, msg: 'コードを読めませんでした。送られてきたコードを、もう一度全部コピーして貼ってください。' }; }
+    return { ok: true, kind: m[1] === 'L' ? 'list' : 'result', obj: obj };
+  }
+  function isInt(n, min, max) { return typeof n === 'number' && Math.floor(n) === n && n >= min && n <= max; }
+
+  // ---------- 棚リスト ----------
+  // list = { v:1, s:[ { n:'棚名', i:[ ['品目', 単価|null], ... ] } ] }
+  function validList(o) {
+    if (!o || o.v !== 1 || !Array.isArray(o.s) || o.s.length < 1 || o.s.length > LIM.shelves) return null;
+    var total = 0, out = { v: 1, s: [] };
+    for (var a = 0; a < o.s.length; a++) {
+      var sh = o.s[a];
+      if (!sh || typeof sh.n !== 'string' || !Array.isArray(sh.i) || sh.i.length < 1) return null;
+      var n = clean(sh.n, LIM.shelfName); if (!n) return null;
+      var seen = {}, items = [];
+      for (var b = 0; b < sh.i.length; b++) {
+        var it = sh.i[b];
+        if (!Array.isArray(it) || typeof it[0] !== 'string') return null;
+        var nm = clean(it[0], LIM.itemName); if (!nm || seen[nm]) return null;
+        seen[nm] = 1;
+        var p = it[1] === null || it[1] === undefined ? null : it[1];
+        if (p !== null && !isInt(p, 0, LIM.price)) return null;
+        items.push([nm, p]);
+      }
+      total += items.length;
+      out.s.push({ n: n, i: items });
+    }
+    if (total > LIM.items) return null;
+    return out;
+  }
+  function listHash(list) { return fnv(JSON.stringify(list)); }
+  function itemTotal(list) { return list.s.reduce(function (a, s) { return a + s.i.length; }, 0); }
+
+  // 品目欄の1行を読む: 行の最後が数字なら単価
+  function parseLine(line) {
+    var raw = clean(z2h(line));
+    if (!raw) return null;
+    // 「名前 900」「名前 900円」「名前 ¥1,200」「名前¥900」。名前と数字の間に空白か¥が要る
+    var m = raw.match(/^(.+?)(?:\s+[¥\\]?|[¥\\])\s*([0-9][0-9,]*)\s*円?$/);
+    if (m) {
+      var p = parseInt(m[2].replace(/,/g, ''), 10), name = clean(m[1]);
+      if (name && !isNaN(p)) return { name: name, price: p };
+    }
+    return { name: raw, price: null };
+  }
+  function parseDraftShelf(d) {
+    var lines = String(d.text || '').split(/\r?\n/), items = [], errs = [], seen = {};
+    lines.forEach(function (ln) {
+      var r = parseLine(ln); if (!r) return;
+      if (Array.from(r.name).length > LIM.itemName) errs.push('「' + Array.from(r.name).slice(0, 12).join('') + '…」は' + LIM.itemName + '字までです');
+      if (r.price !== null && r.price > LIM.price) errs.push('「' + r.name + '」の単価が大きすぎます');
+      if (seen[r.name]) errs.push('「' + r.name + '」が2回あります');
+      seen[r.name] = 1;
+      items.push(r);
+    });
+    return { items: items, errs: errs };
+  }
+
+  // ---------- 状態と保存 ----------
+  var canSave = true;
+  var S = blank();
+  function blank() { return { list: null, me: '', dev: '', counts: {}, done: {}, partner: null, pick: {}, draft: [{ name: '', text: '' }], editing: false }; }
+  function newDev() {
+    var a = new Uint8Array(8), s = '', c = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    (window.crypto || window.msCrypto).getRandomValues(a);
+    for (var i = 0; i < 8; i++) s += c[a[i] % 36];
+    return s;
+  }
+  function save() {
+    if (!canSave) return;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { canSave = false; $('saveWarn').hidden = false; }
+  }
+  function load() {
+    var raw = null;
+    try { raw = localStorage.getItem(KEY); localStorage.setItem(KEY + '-t', '1'); localStorage.removeItem(KEY + '-t'); }
+    catch (e) { canSave = false; $('saveWarn').hidden = false; }
+    var o = null;
+    try { o = raw ? JSON.parse(raw) : null; } catch (e) { o = null; }
+    S = blank();
+    if (o && typeof o === 'object') {
+      if (typeof o.dev === 'string' && /^[a-z0-9]{8}$/.test(o.dev)) S.dev = o.dev;
+      S.me = clean(o.me, LIM.me);
+      var L = o.list ? validList(o.list) : null;
+      if (L) {
+        S.list = L;
+        L.s.forEach(function (sh, si) {
+          var c = o.counts && o.counts[si];
+          if (Array.isArray(c) && c.length === sh.i.length) S.counts[si] = c.map(function (v) { return isInt(v, 0, LIM.count) ? v : null; });
+          if (o.done && o.done[si] === true) S.done[si] = true;
+          var pk = o.pick && o.pick[si];
+          if (pk && (pk.who === 'me' || pk.who === 'p') && typeof pk.sig === 'string') S.pick[si] = { who: pk.who, sig: pk.sig };
+        });
+        if (o.partner) S.partner = validResult(o.partner.raw, L, true);
+      }
+      if (Array.isArray(o.draft) && o.draft.length) {
+        S.draft = o.draft.slice(0, LIM.shelves).map(function (d) { return { name: String((d && d.name) || '').slice(0, 40), text: String((d && d.text) || '').slice(0, 20000) }; });
+      }
+      S.editing = !!o.editing && !!S.list;
+    }
+    if (!S.dev) S.dev = newDev();
+    if (!S.list) S.editing = false;
+  }
+
+  // ---------- 結果コード ----------
+  // result = { v:1, l:listHash, n:'名前', d:'端末番号', t:秒, c:[ [棚番号,[数...]], ... ] }
+  function myResultObj() {
+    var c = [];
+    S.list.s.forEach(function (sh, si) { if (S.done[si]) c.push([si, sh.i.map(function (_, ii) { var v = S.counts[si] && S.counts[si][ii]; return v == null ? 0 : v; })]); });
+    return { v: 1, l: listHash(S.list), n: S.me, d: S.dev, t: Math.floor(Date.now() / 1000), c: c };
+  }
+  // 戻り: {n,d,t,s:{si:[...]},raw} または null。silent=false のときは理由を投げる
+  function validResult(o, list, silent) {
+    function bad(msg) { if (silent) return null; throw new Error(msg); }
+    if (!o || o.v !== 1 || typeof o.l !== 'string' || typeof o.d !== 'string' || !/^[a-z0-9]{8}$/.test(o.d) || !Array.isArray(o.c) || typeof o.t !== 'number') return bad('結果コードの形が違います。');
+    if (o.l !== listHash(list)) return bad('この端末の棚リストと、相手の棚リストが違います。\n棚リストを作り直したか、別の棚卸しの結果です。同じ棚リストのコードを読み込んでから数えてもらってください。');
+    var s = {};
+    for (var i = 0; i < o.c.length; i++) {
+      var e = o.c[i];
+      if (!Array.isArray(e) || !isInt(e[0], 0, list.s.length - 1) || !Array.isArray(e[1]) || e[1].length !== list.s[e[0]].i.length) return bad('結果コードの中身が棚リストと合いません。');
+      for (var j = 0; j < e[1].length; j++) if (!isInt(e[1][j], 0, LIM.count)) return bad('結果コードの数が読めません。');
+      s[e[0]] = e[1].slice();
+    }
+    return { n: clean(o.n, LIM.me), d: o.d, t: o.t, s: s, raw: o };
+  }
+
+  // ---------- 合算 ----------
+  function names() {
+    var me = S.me || 'この端末', p = S.partner ? (S.partner.n || '相手') : '相手';
+    if (p === me) p = p + '（相手）';
+    return { me: me, p: p };
+  }
+  function myDoneCounts(si) { return S.list.s[si].i.map(function (_, ii) { var v = S.counts[si] && S.counts[si][ii]; return v == null ? 0 : v; }); }
+  function merge() {
+    var L = S.list, res = [], nm = names();
+    L.s.forEach(function (sh, si) {
+      var a = S.done[si] ? myDoneCounts(si) : null;
+      var b = S.partner && S.partner.s[si] ? S.partner.s[si] : null;
+      var r = { si: si, name: sh.n, a: a, b: b, use: null, st: 'none', who: '' };
+      if (a && b) {
+        var sig = JSON.stringify([a, b]), pk = S.pick[si];
+        if (pk && pk.sig === sig) { r.st = 'adopted'; r.use = pk.who === 'me' ? a : b; r.who = (pk.who === 'me' ? nm.me : nm.p) + 'の数を採用'; }
+        else { r.st = 'review'; r.who = nm.me + 'と' + nm.p + 'が2人とも数えました（合計に入っていません）'; }
+      } else if (a) { r.st = 'one'; r.use = a; r.who = nm.me + 'が数えました'; }
+      else if (b) { r.st = 'one'; r.use = b; r.who = nm.p + 'が数えました'; }
+      res.push(r);
+    });
+    // 品目ごとの合計（棚をまたいで同じ名前を足す）
+    var order = [], map = {};
+    res.forEach(function (r) {
+      if (!r.use) return;
+      L.s[r.si].i.forEach(function (it, ii) {
+        var k = it[0], q = r.use[ii];
+        if (!map[k]) { map[k] = { name: k, qty: 0, amount: 0, prices: {}, noPrice: false }; order.push(k); }
+        var m = map[k]; m.qty += q;
+        if (it[1] === null) m.noPrice = true; else { m.amount += q * it[1]; m.prices[it[1]] = 1; }
+      });
+    });
+    var rows = order.map(function (k) { return map[k]; }), total = 0, anyNoPrice = false;
+    rows.forEach(function (m) { total += m.amount; if (m.noPrice) anyNoPrice = true; });
+    return {
+      shelves: res, rows: rows, total: total, anyNoPrice: anyNoPrice,
+      review: res.filter(function (r) { return r.st === 'review'; }),
+      none: res.filter(function (r) { return r.st === 'none'; })
+    };
+  }
+  var ST_LABEL = { review: '2人とも数えた・要確認', adopted: '2人とも数えた・採用済み', one: '1人だけ数えた', none: 'どちらもまだ' };
+
+  // ---------- 表示: 共通 ----------
+  var tab = 'list';
+  function setTab(t) {
+    tab = t;
+    ['list', 'count', 'merge'].forEach(function (k) {
+      $('tab-' + k).setAttribute('aria-selected', k === t ? 'true' : 'false');
+      $('panel-' + k).hidden = k !== t;
+    });
+    render();
+    try { sessionStorage.setItem(KEY + '-tab', t); } catch (e) {}
+  }
+  function updTabs() {
+    if (!S.list) { $('numList').textContent = 'まだありません'; $('numCount').textContent = '—'; $('numMerge').textContent = '—'; return; }
+    $('numList').textContent = '棚' + S.list.s.length + '・品目' + itemTotal(S.list);
+    var d = S.list.s.filter(function (_, si) { return S.done[si]; }).length;
+    $('numCount').textContent = '済 ' + d + '／' + S.list.s.length;
+    var m = merge();
+    $('numMerge').textContent = m.review.length ? '要確認 ' + m.review.length : (S.partner ? '相手の結果あり' : '相手の結果待ち');
+  }
+  function render() {
+    updTabs();
+    if (tab === 'list') renderList();
+    else if (tab === 'count') renderCount();
+    else renderMerge();
+  }
+  var toastT = null;
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 2600);
+  }
+  var modalCb = null, modalBack = null;
+  function confirmBox(text, yes, cb) {
+    $('modalText').textContent = text; $('modalYes').textContent = yes || 'はい';
+    modalCb = cb; modalBack = document.activeElement; $('modal').hidden = false; $('modalNo').focus();
+  }
+  function closeModal(ok) {
+    $('modal').hidden = true; var cb = modalCb; modalCb = null;
+    if (modalBack && modalBack.focus && document.body.contains(modalBack)) modalBack.focus();
+    if (ok && cb) cb();
+  }
+  $('modalNo').addEventListener('click', function () { closeModal(false); });
+  $('modalYes').addEventListener('click', function () { closeModal(true); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').hidden) closeModal(false); });
+
+  function copyText(text, okMsg, ta) {
+    function fallback() {
+      var t = ta || el('textarea', { style: 'position:fixed;top:0;left:0;opacity:0', readonly: true });
+      if (!ta) { t.value = text; document.body.appendChild(t); }
+      t.focus(); t.select(); try { t.setSelectionRange(0, text.length); } catch (e) {}
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      if (!ta) document.body.removeChild(t);
+      toast(ok ? okMsg : 'コピーできませんでした。欄の文字を長押しして全部選び、コピーしてください。');
+    }
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fallback);
+    else fallback();
+  }
+  function shareBtn(text) {
+    if (!navigator.share) return null;
+    return el('button', { type: 'button', cls: 'btn sub', text: '共有（LINEなど）', onclick: function () {
+      navigator.share({ text: text }).catch(function () {});
+    } });
+  }
+  function codeBlock(code, label, okMsg) {
+    var ta = el('textarea', { cls: 'code notranslate', translate: 'no', readonly: true, 'aria-label': label, spellcheck: 'false' });
+    ta.value = code;
+    var copy = el('button', { type: 'button', cls: 'btn', text: 'コピー', onclick: function () { copyText(code, okMsg, ta); } });
+    var sh = shareBtn(code);
+    return [ta, sh ? el('div', { cls: 'row2' }, [copy, sh]) : copy, el('p', { cls: 'hint', text: 'コードの長さ: ' + num(code.length) + '字。途中で切れると読み込めません。' })];
+  }
+
+  // ---------- ① 棚リスト ----------
+  var SAMPLE = [
+    { name: '売り場A（文具）', text: 'ボールペン 黒 120\nボールペン 赤 120\nノート A5 280\n付箋 330\nマスキングテープ 260' },
+    { name: '売り場B（雑貨）', text: '手ぬぐい 900\nマグカップ 1,400\nハンカチ 650\nポストカード 180' },
+    { name: 'レジ横', text: 'ポストカード 180\n一筆箋 380\n紙袋（小）' },
+    { name: '倉庫1', text: '手ぬぐい 900\nマグカップ 1,400\nノート A5 280\n付箋 330' },
+    { name: '倉庫2', text: 'ボールペン 黒 120\nマスキングテープ 260\n紙袋（小）\n紙袋（大）' }
+  ];
+  function renderList() {
+    var P = $('panel-list'); P.textContent = '';
+    if (S.list && !S.editing) {
+      var code = makeCode('TNL1', S.list);
+      P.appendChild(el('h2', { text: '棚リスト（棚' + S.list.s.length + '・品目' + itemTotal(S.list) + '）' }));
+      var ul = el('ul', { cls: 'sumlist' });
+      S.list.s.forEach(function (sh) {
+        var withP = sh.i.filter(function (it) { return it[1] !== null; }).length;
+        ul.appendChild(el('li', {}, [el('span', { text: sh.n }), el('span', { text: '品目' + sh.i.length + (withP ? '・単価あり' + withP : '') })]));
+      });
+      P.appendChild(el('div', { cls: 'box' }, [ul]));
+      P.appendChild(el('h2', { text: '相手に送る「棚リストのコード」' }));
+      P.appendChild(el('p', { cls: 'hint', text: '一緒に数える人に、このコードをLINEなどで送ってください。相手はこのページの「① 棚リスト」で「相手のコードを読み込む」に貼ると、同じリストで数え始められます。' }));
+      codeBlock(code, '棚リストのコード', '棚リストのコードをコピーしました').forEach(function (n) { P.appendChild(n); });
+      P.appendChild(el('button', { type: 'button', cls: 'btn', text: '② 数えはじめる ▶', onclick: function () { setTab('count'); window.scrollTo(0, 0); } }));
+      P.appendChild(el('button', { type: 'button', cls: 'btn sub', text: '棚リストを直す', onclick: function () {
+        S.draft = S.list.s.map(function (sh) { return { name: sh.n, text: sh.i.map(function (it) { return it[0] + (it[1] !== null ? ' ' + it[1] : ''); }).join('\n') }; });
+        S.editing = true; save(); render();
+      } }));
+      return;
+    }
+    if (!S.list) {
+      P.appendChild(el('h2', { text: '相手から棚リストのコードが届いたら' }));
+      var box = el('div', { cls: 'box' });
+      var ta = el('textarea', { cls: 'code notranslate', translate: 'no', id: 'inList', 'aria-label': '棚リストのコードを貼る', placeholder: 'TNL1. で始まるコードを貼る', spellcheck: 'false' });
+      var msg = el('p', { cls: 'err', role: 'alert' });
+      box.appendChild(el('label', { cls: 'lbl', for: 'inList', text: '棚リストのコードを貼る' }));
+      box.appendChild(ta);
+      box.appendChild(el('button', { type: 'button', cls: 'btn', text: '読み込む', onclick: function () { importList(ta.value, msg); } }));
+      box.appendChild(msg);
+      P.appendChild(box);
+      P.appendChild(el('h2', { text: '新しく作る（1台だけで作ります）' }));
+    } else {
+      P.appendChild(el('h2', { text: '棚リストを直す' }));
+      P.appendChild(el('p', { cls: 'hint', text: '中身を変えると、数えた数と相手の結果は消えます（相手にも新しいコードを送り直します）。' }));
+    }
+    P.appendChild(el('p', { cls: 'hint', text: '棚ごとに名前を付け、品目を1行に1つ書きます。行の最後に数字があれば単価として読みます（例: 「手ぬぐい 900」「ノート A5 280円」）。単価はなくてもかまいません。売り場と倉庫に同じ品目があるときは、同じ名前で書くと合算で足されます。' }));
+    var wrap = el('div', { id: 'drafts' });
+    S.draft.forEach(function (d, i) { wrap.appendChild(draftShelf(d, i)); });
+    P.appendChild(wrap);
+    P.appendChild(el('button', { type: 'button', cls: 'btn sub', text: '＋ 棚を足す', disabled: S.draft.length >= LIM.shelves, onclick: function () {
+      S.draft.push({ name: '', text: '' }); save(); render();
+      var ins = document.querySelectorAll('#drafts input'); if (ins.length) ins[ins.length - 1].focus();
+    } }));
+    var allEmpty = S.draft.every(function (d) { return !d.name.trim() && !d.text.trim(); });
+    if (allEmpty) P.appendChild(el('button', { type: 'button', cls: 'btn sub', text: '見本を入れて試す（架空のお店）', onclick: function () { S.draft = SAMPLE.map(function (d) { return { name: d.name, text: d.text }; }); save(); render(); } }));
+    var emsg = el('p', { cls: 'err', role: 'alert', id: 'buildErr' });
+    P.appendChild(el('button', { type: 'button', cls: 'btn', text: 'この内容で棚リストを作る', onclick: function () { buildList(emsg); } }));
+    if (S.list) P.appendChild(el('button', { type: 'button', cls: 'btn sub', text: '直さずに戻る', onclick: function () { S.editing = false; save(); render(); } }));
+    P.appendChild(emsg);
+  }
+  function draftShelf(d, i) {
+    var parsedP = el('p', { cls: 'parsed' });
+    function upd() {
+      var r = parseDraftShelf(d), wp = r.items.filter(function (x) { return x.price !== null; }).length;
+      parsedP.textContent = '品目' + r.items.length + (wp ? '・単価あり' + wp : '') + (r.errs.length ? '　⚠ ' + r.errs[0] : '');
+    }
+    var nameIn = el('input', { type: 'text', id: 'dn' + i, maxlength: '40', autocomplete: 'off', placeholder: '例：倉庫1', oninput: function () { d.name = nameIn.value; save(); } });
+    nameIn.value = d.name;
+    var ta = el('textarea', { id: 'dt' + i, 'aria-label': '棚' + (i + 1) + 'の品目（1行に1つ）', placeholder: '手ぬぐい 900\nマグカップ 1400\n紙袋', oninput: function () { d.text = ta.value; upd(); save(); } });
+    ta.value = d.text;
+    var del = S.draft.length > 1 ? el('button', { type: 'button', cls: 'del', text: 'この棚を消す', onclick: function () {
+      var go = function () { S.draft.splice(i, 1); save(); render(); };
+      if (d.name.trim() || d.text.trim()) confirmBox('「' + (clean(d.name) || '名前のない棚') + '」を棚リストの下書きから消します。', '消す', go); else go();
+    } }) : null;
+    upd();
+    return el('div', { cls: 'box shelf-ed' }, [
+      el('div', { cls: 'top' }, [el('div', {}, [el('label', { cls: 'lbl', for: 'dn' + i, text: '棚' + (i + 1) + 'の名前' }), nameIn]), del]),
+      ta, parsedP
+    ]);
+  }
+  function buildList(msgEl) {
+    var errs = [], out = { v: 1, s: [] }, total = 0, names = {};
+    S.draft.forEach(function (d, i) {
+      var n = clean(d.name), r = parseDraftShelf(d);
+      if (!n && !r.items.length) return; // まったく空の棚は無視
+      var label = n || '棚' + (i + 1);
+      if (!n) errs.push('棚' + (i + 1) + 'に名前がありません');
+      else if (Array.from(n).length > LIM.shelfName) errs.push('「' + label + '」の名前は' + LIM.shelfName + '字までです');
+      if (n && names[n]) errs.push('棚の名前「' + n + '」が2つあります');
+      names[n] = 1;
+      if (!r.items.length) errs.push('「' + label + '」に品目がありません');
+      r.errs.forEach(function (e) { errs.push('「' + label + '」: ' + e); });
+      total += r.items.length;
+      out.s.push({ n: n, i: r.items.map(function (x) { return [x.name, x.price]; }) });
+    });
+    if (!out.s.length) errs.push('棚が1つもありません');
+    if (out.s.length > LIM.shelves) errs.push('棚は' + LIM.shelves + 'までです');
+    if (total > LIM.items) errs.push('品目は全部で' + LIM.items + 'までです（いま' + total + '）');
+    if (errs.length) { msgEl.textContent = errs.slice(0, 6).join('\n'); return; }
+    var L = validList(out);
+    if (!L) { msgEl.textContent = '棚リストを作れませんでした。名前と品目を見直してください。'; return; }
+    setList(L, '棚リストを作りました');
+  }
+  function hasWork() {
+    return Object.keys(S.done).length > 0 || !!S.partner || Object.keys(S.counts).some(function (k) { return (S.counts[k] || []).some(function (v) { return v != null; }); });
+  }
+  function setList(L, okMsg) {
+    var apply = function () {
+      if (!S.list || listHash(S.list) !== listHash(L)) { S.counts = {}; S.done = {}; S.partner = null; S.pick = {}; }
+      S.list = L; S.editing = false; save(); render(); window.scrollTo(0, 0); toast(okMsg);
+    };
+    if (S.list && listHash(S.list) !== listHash(L) && hasWork()) confirmBox('棚リストの中身が変わります。\nこの端末で数えた数と、読み込んだ相手の結果は消えます。よろしいですか？', '変える', apply);
+    else apply();
+  }
+  function importList(text, msgEl) {
+    var r = readCode(text);
+    if (!r.ok) { msgEl.textContent = r.msg; return; }
+    if (r.kind !== 'list') { msgEl.textContent = 'これは「結果コード」です。結果コードは「③ 合算」で読み込みます。先に、棚リストのコードを読み込んでください。'; return; }
+    var L = validList(r.obj);
+    if (!L) { msgEl.textContent = '棚リストのコードの中身が読めませんでした。'; return; }
+    setList(L, '棚リストを読み込みました（棚' + L.s.length + '・品目' + itemTotal(L) + '）');
+  }
+
+  // ---------- ② 数える ----------
+  function renderCount() {
+    var P = $('panel-count'); P.textContent = '';
+    if (!S.list) { P.appendChild(el('p', { cls: 'empty', text: 'まず「① 棚リスト」で棚リストを作るか、相手から届いた棚リストのコードを読み込んでください。' })); return; }
+    var nameIn = el('input', { type: 'text', id: 'me', maxlength: String(LIM.me), autocomplete: 'off', placeholder: '例：店主・スタッフ', oninput: function () { S.me = clean(nameIn.value, LIM.me); save(); refreshCountBits(); } });
+    nameIn.value = S.me;
+    P.appendChild(el('div', { cls: 'box' }, [el('label', { cls: 'lbl', for: 'me', text: '自分の名前（相手の画面に出ます）' }), nameIn]));
+    P.appendChild(el('p', { cls: 'progress', id: 'progress' }));
+    P.appendChild(el('p', { cls: 'hint', text: '自分の担当の棚だけ数えて、数え終わったら棚の下の「この棚を数え終わった」を押してください。数え終わった棚だけが、相手に送る結果に入ります。' }));
+    S.list.s.forEach(function (sh, si) { P.appendChild(countShelf(sh, si)); });
+    P.appendChild(el('h2', { text: '相手に送る「結果コード」' }));
+    P.appendChild(el('div', { id: 'resultArea' }));
+    refreshCountBits();
+  }
+  function countShelf(sh, si) {
+    if (!S.counts[si]) S.counts[si] = sh.i.map(function () { return null; });
+    var badge = el('span', { cls: 'badge', id: 'bd' + si });
+    var box = el('section', { cls: 'shelf', id: 'sh' + si, 'aria-labelledby': 'sn' + si }, [el('div', { cls: 'head' }, [el('h3', { id: 'sn' + si, text: sh.n }), badge])]);
+    sh.i.forEach(function (it, ii) {
+      var inp = el('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', id: 'c' + si + '_' + ii, 'aria-label': sh.n + ' ' + it[0] + 'の数' });
+      var v = S.counts[si][ii]; inp.value = v == null ? '' : String(v);
+      function setV(nv) { S.counts[si][ii] = nv; inp.value = nv == null ? '' : String(nv); inp.removeAttribute('aria-invalid'); save(); refreshCountBits(); }
+      inp.addEventListener('input', function () {
+        var t = z2h(inp.value).replace(/[,\s]/g, '');
+        if (t === '') { S.counts[si][ii] = null; inp.removeAttribute('aria-invalid'); save(); refreshCountBits(); return; }
+        if (/^\d+$/.test(t) && +t <= LIM.count) { S.counts[si][ii] = +t; inp.removeAttribute('aria-invalid'); save(); refreshCountBits(); }
+        else inp.setAttribute('aria-invalid', 'true');
+      });
+      inp.addEventListener('blur', function () {
+        if (inp.getAttribute('aria-invalid') === 'true') { var o = S.counts[si][ii]; inp.value = o == null ? '' : String(o); inp.removeAttribute('aria-invalid'); toast('数は0〜' + num(LIM.count) + 'の整数で入れてください'); }
+        else { var o2 = S.counts[si][ii]; inp.value = o2 == null ? '' : String(o2); }
+      });
+      var minus = el('button', { type: 'button', 'aria-label': it[0] + 'を1減らす', text: '−', onclick: function () { var o = S.counts[si][ii]; setV(o == null || o <= 0 ? 0 : o - 1); } });
+      var plus = el('button', { type: 'button', 'aria-label': it[0] + 'を1増やす', text: '＋', onclick: function () { var o = S.counts[si][ii]; setV(o == null ? 1 : Math.min(LIM.count, o + 1)); } });
+      box.appendChild(el('div', { cls: 'item' }, [
+        el('label', { cls: 'nm', for: 'c' + si + '_' + ii }, [it[0], it[1] !== null ? el('span', { cls: 'pr', text: '単価 ' + yen(it[1]) }) : null]),
+        minus, inp, plus
+      ]));
+    });
+    var doneBtn = el('button', { type: 'button', cls: 'btn', id: 'db' + si, onclick: function () {
+      if (S.done[si]) delete S.done[si]; else S.done[si] = true;
+      save(); refreshCountBits();
+      if (S.done[si]) toast('「' + sh.n + '」を数え終わった棚にしました');
+    } });
+    box.appendChild(el('div', { cls: 'foot' }, [doneBtn, el('p', { cls: 'blanks', id: 'bl' + si })]));
+    return box;
+  }
+  function refreshCountBits() {
+    if (!S.list || tab !== 'count') { updTabs(); return; }
+    var d = 0;
+    S.list.s.forEach(function (sh, si) {
+      var done = !!S.done[si]; if (done) d++;
+      var box = $('sh' + si); if (!box) return;
+      box.classList.toggle('done', done);
+      var blanks = (S.counts[si] || []).filter(function (v) { return v == null; }).length;
+      $('bd' + si).textContent = done ? '✔ 数え終わった' : (blanks === sh.i.length ? 'まだ' : '数え中');
+      $('db' + si).textContent = done ? '✔ 数え終わった（押すと外す）' : 'この棚を数え終わった';
+      $('db' + si).setAttribute('aria-pressed', done ? 'true' : 'false');
+      $('bl' + si).textContent = blanks ? (done ? '空欄の' + blanks + '品目は0として数えます。' : '空欄 ' + blanks + '品目（数え終わったにすると0として数えます）') : '';
+    });
+    $('progress').textContent = '数え終わった棚 ' + d + '／' + S.list.s.length;
+    var A = $('resultArea'); A.textContent = '';
+    if (!d) A.appendChild(el('p', { cls: 'empty', text: '数え終わった棚がまだありません。棚の下の「この棚を数え終わった」を押すと、ここに結果コードが出ます。' }));
+    else {
+      var code = makeCode('TNR1', myResultObj());
+      A.appendChild(el('p', { cls: 'hint', text: '数え終わった棚（' + d + 'つ）の数が入っています。LINEなどで相手に送ってください。相手は「③ 合算」に貼ります。数を直したら、もう一度コピーして送り直してください（相手の画面では上書きされます）。' }));
+      codeBlock(code, '結果コード', '結果コードをコピーしました').forEach(function (n) { A.appendChild(n); });
+    }
+    updTabs();
+  }
+
+  // ---------- ③ 合算 ----------
+  function renderMerge() {
+    var P = $('panel-merge'); P.textContent = '';
+    if (!S.list) { P.appendChild(el('p', { cls: 'empty', text: 'まず「① 棚リスト」で棚リストを作るか、相手から届いた棚リストのコードを読み込んでください。' })); return; }
+    var nm = names();
+    // 相手の結果
+    P.appendChild(el('h2', { text: '相手の結果コードを貼る' }));
+    var box = el('div', { cls: 'box' });
+    var ta = el('textarea', { cls: 'code notranslate', translate: 'no', id: 'inRes', 'aria-label': '相手の結果コード', placeholder: 'TNR1. で始まるコードを貼る', spellcheck: 'false' });
+    var msg = el('p', { cls: 'err', role: 'alert', id: 'resErr' });
+    box.appendChild(ta);
+    box.appendChild(el('button', { type: 'button', cls: 'btn', text: '読み込む', onclick: function () { importResult(ta.value, msg); } }));
+    box.appendChild(msg);
+    if (S.partner) {
+      var pc = Object.keys(S.partner.s).length, pi = 0;
+      Object.keys(S.partner.s).forEach(function (k) { pi += S.partner.s[k].length; });
+      var dt = new Date(S.partner.t * 1000);
+      box.appendChild(el('p', { cls: 'partner' }, [el('b', { text: nm.p }), 'の結果：数え終わった棚 ' + pc + '／' + S.list.s.length + '・品目 ' + pi + '（' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + dt.getHours() + ':' + String(dt.getMinutes()).padStart(2, '0') + '時点）']));
+      box.appendChild(el('button', { type: 'button', cls: 'btn danger', text: nm.p + 'の結果を外す', onclick: function () {
+        confirmBox(nm.p + 'の結果を外します。採用の選択も消えます。', '外す', function () { S.partner = null; S.pick = {}; save(); render(); });
+      } }));
+    } else {
+      box.appendChild(el('p', { cls: 'hint', text: 'まだ相手の結果はありません。いまは、この端末で数え終わった棚だけで合算しています。' }));
+    }
+    P.appendChild(box);
+
+    var M = merge();
+    // 棚の状態
+    P.appendChild(el('h2', { text: '棚の状態' }));
+    P.appendChild(el('div', { cls: 'legend' }, [
+      el('span', {}, [el('i', { style: 'background:var(--rv-bg);border-color:var(--rv-bd)' }), '要確認']),
+      el('span', {}, [el('i', { style: 'background:var(--ok-bg);border-color:var(--ok-bd)' }), '採用済み']),
+      el('span', {}, [el('i', { style: 'background:var(--one-bg);border-color:var(--one-bd)' }), '1人だけ']),
+      el('span', {}, [el('i', { style: 'background:var(--no-bg);border-color:var(--no-bd)' }), 'どちらもまだ'])
+    ]));
+    var stl = el('div', { cls: 'status', id: 'status' });
+    M.shelves.forEach(function (r) {
+      stl.appendChild(el('div', { cls: 'st ' + r.st }, [el('span', { cls: 'nm', text: r.name }), el('span', { cls: 'lb', text: ST_LABEL[r.st] }), r.who ? el('span', { cls: 'who', text: r.who + (r.st === 'none' ? '' : '') }) : el('span', { cls: 'who', text: '合計に入っていません' })]));
+    });
+    P.appendChild(stl);
+
+    // 要確認・採用済み
+    var both = M.shelves.filter(function (r) { return r.st === 'review' || r.st === 'adopted'; });
+    if (both.length) {
+      P.appendChild(el('h2', { text: '2人とも数えた棚' }));
+      P.appendChild(el('p', { cls: 'hint', text: '同じ棚を2人とも数えています。二重に足さないように、どちらの数を使うか選ぶまで合計に入れません。' }));
+    }
+    both.forEach(function (r) {
+      var sh = S.list.s[r.si];
+      if (r.st === 'adopted') {
+        P.appendChild(el('div', { cls: 'adopted-line' }, [el('span', { text: r.name + '：' + r.who }), el('button', { type: 'button', text: '選び直す', onclick: function () { delete S.pick[r.si]; save(); render(); } })]));
+        return;
+      }
+      var tb = el('tbody'), same = true;
+      sh.i.forEach(function (it, ii) {
+        var d = r.a[ii] !== r.b[ii]; if (d) same = false;
+        tb.appendChild(el('tr', { cls: d ? 'diff' : null }, [el('td', { text: it[0] }), el('td', { text: num(r.a[ii]) }), el('td', { text: num(r.b[ii]) })]));
+      });
+      var sig = JSON.stringify([r.a, r.b]);
+      P.appendChild(el('div', { cls: 'rvbox', id: 'rv' + r.si }, [
+        el('div', { cls: 'head' }, [el('strong', { text: r.name }), el('span', { text: '要確認：どちらの数を使いますか' })]),
+        el('table', {}, [el('thead', {}, [el('tr', {}, [el('th', { text: '品目' }), el('th', { text: nm.me }), el('th', { text: nm.p })])]), tb]),
+        same ? el('p', { cls: 'same', text: '2人の数は同じです。どちらを選んでも合計は変わりません。' }) : el('p', { cls: 'same', text: '≠ の行は、2人の数が違います。' }),
+        el('div', { cls: 'acts' }, [
+          el('button', { type: 'button', cls: 'btn', text: nm.me + 'の数を使う', onclick: function () { S.pick[r.si] = { who: 'me', sig: sig }; save(); render(); toast(r.name + '：' + nm.me + 'の数を合計に入れました'); } }),
+          el('button', { type: 'button', cls: 'btn', text: nm.p + 'の数を使う', onclick: function () { S.pick[r.si] = { who: 'p', sig: sig }; save(); render(); toast(r.name + '：' + nm.p + 'の数を合計に入れました'); } })
+        ])
+      ]));
+    });
+
+    // 合計
+    P.appendChild(el('h2', { text: '合計' }));
+    if (M.review.length || M.none.length) {
+      var w = [];
+      if (M.review.length) w.push('要確認の棚が' + M.review.length + 'つ（' + M.review.map(function (r) { return r.name; }).join('・') + '）');
+      if (M.none.length) w.push('まだ数えていない棚が' + M.none.length + 'つ（' + M.none.map(function (r) { return r.name; }).join('・') + '）');
+      P.appendChild(el('p', { cls: 'warnbar', id: 'warnbar', text: w.join('、') + 'あります。この棚の数は合計に入っていません。' }));
+    }
+    if (!M.rows.length) P.appendChild(el('p', { cls: 'empty', text: '合計に入る棚がまだありません。' }));
+    else {
+      var body = el('tbody');
+      M.rows.forEach(function (m) {
+        var ps = Object.keys(m.prices).map(Number), up = ps.length === 1 && !m.noPrice ? '単価 ' + yen(ps[0]) : (ps.length > 1 ? '単価が棚で違う' : (ps.length && m.noPrice ? '単価なしの棚あり' : ''));
+        body.appendChild(el('tr', {}, [
+          el('td', {}, [m.name, up ? el('span', { cls: 'up', text: up }) : null]),
+          el('td', { text: num(m.qty) }),
+          el('td', { text: ps.length ? yen(m.amount) : '—' })
+        ]));
+      });
+      P.appendChild(el('div', { cls: 'totals' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, [el('th', { text: '品目' }), el('th', { text: '合計数' }), el('th', { text: '金額' })])]),
+        body,
+        el('tfoot', {}, [el('tr', {}, [el('td', { text: '総額' }), el('td', { text: '' }), el('td', { text: yen(M.total) })])])
+      ])]));
+      if (M.anyNoPrice) P.appendChild(el('p', { cls: 'hint', text: '単価のない品目（金額「—」）は、総額に入っていません。' }));
+    }
+    var txt = mergeText(M);
+    P.appendChild(el('button', { type: 'button', cls: 'btn', text: '合算結果をコピー', onclick: function () { copyText(txt, '合算結果をコピーしました（表計算ソフトにも貼れます）'); } }));
+    P.appendChild(el('p', { cls: 'hint', text: '品目・合計数・単価・金額をタブ区切りでコピーします。総額・要確認の棚・まだ数えていない棚も入ります。' }));
+  }
+  function mergeText(M) {
+    var d = new Date(), nm = names(), lines = [];
+    lines.push('年末棚卸しの合算（' + d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') + '）');
+    lines.push(['品目', '合計数', '単価', '金額'].join('\t'));
+    M.rows.forEach(function (m) {
+      var ps = Object.keys(m.prices).map(Number);
+      lines.push([m.name, m.qty, ps.length === 1 && !m.noPrice ? ps[0] : (ps.length ? '棚で違う' : ''), ps.length ? m.amount : ''].join('\t'));
+    });
+    lines.push(['総額', '', '', M.total].join('\t'));
+    if (M.anyNoPrice) lines.push('※単価のない品目は総額に入っていません');
+    lines.push('要確認（合計に入っていません）: ' + (M.review.length ? M.review.map(function (r) { return r.name; }).join('・') : 'なし'));
+    lines.push('まだ数えていない棚: ' + (M.none.length ? M.none.map(function (r) { return r.name; }).join('・') : 'なし'));
+    var by = M.shelves.filter(function (r) { return r.st === 'one' || r.st === 'adopted'; }).map(function (r) { return r.name + '＝' + r.who.replace(/が数えました$/, ''); });
+    if (by.length) lines.push('合計に入れた棚: ' + by.join('／'));
+    return lines.join('\n');
+  }
+  function importResult(text, msgEl) {
+    msgEl.textContent = '';
+    var r = readCode(text);
+    if (!r.ok) { msgEl.textContent = r.msg; return; }
+    if (r.kind !== 'result') { msgEl.textContent = 'これは「棚リストのコード」です。ここには、相手が「② 数える」の下でコピーした「結果コード」を貼ってください。'; return; }
+    var res;
+    try { res = validResult(r.obj, S.list, false); } catch (e) { msgEl.textContent = e.message; return; }
+    if (res.d === S.dev) { msgEl.textContent = 'これはこの端末の結果コードです。相手の端末でコピーした結果コードを貼ってください。'; return; }
+    var apply = function (replaced) {
+      var old = S.partner, same = old && old.d === res.d;
+      if (!same) S.pick = {}; // 別の相手に替えたら採用も選び直し
+      S.partner = res; save(); render();
+      var pc = Object.keys(res.s).length, nm = names();
+      toast(same ? nm.p + 'の結果を新しいものに置き換えました（足し直していません）' : nm.p + 'の結果を読み込みました（数え終わった棚 ' + pc + '）');
+      var ta = $('inRes'); if (ta) ta.value = '';
+    };
+    if (S.partner && S.partner.d !== res.d) {
+      confirmBox('いま入っている「' + names().p + '」の結果を、「' + (res.n || '相手') + '」の結果に入れ替えます。\n合算は2人までです。よろしいですか？', '入れ替える', function () { apply(true); });
+    } else if (S.partner && S.partner.d === res.d && res.t < S.partner.t) {
+      confirmBox('いま入っている結果より古い結果コードです。古いほうに戻しますか？', '戻す', function () { apply(true); });
+    } else apply(false);
+  }
+
+  // ---------- 全部消す ----------
+  $('clearAll').addEventListener('click', function () {
+    confirmBox('この端末の棚リスト・数・相手の結果・名前を全部消します。\n元に戻せません。よろしいですか？', '全部消す', function () {
+      var dev = S.dev; S = blank(); S.dev = dev;
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      save(); setTab('list'); window.scrollTo(0, 0); toast('この端末の棚卸しを消しました');
+    });
+  });
+
+  ['list', 'count', 'merge'].forEach(function (k) { $('tab-' + k).addEventListener('click', function () { setTab(k); }); });
+  window.addEventListener('storage', function (e) { if (e.key === KEY) { load(); render(); } });
+
+  load(); save();
+  var first = 'list';
+  try { var t = sessionStorage.getItem(KEY + '-tab'); if (t === 'count' || t === 'merge') first = t; } catch (e) {}
+  setTab(first);
+})();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "b4c9f7e78daf4edb84ef52b88633f649"}'></script>
+</body>
+</html>

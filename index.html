@@ -63,6 +63,9 @@ textarea.code{min-height:84px;font-family:ui-monospace,Consolas,monospace;font-s
 .shelf-ed .del{min-height:48px;padding:0 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--danger);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
 .shelf-ed textarea{margin-top:8px}
 .parsed{font-size:13px;color:var(--text3);margin:4px 0 0}
+.pv{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:4px}
+.pv li{font-size:13px;line-height:1.3;padding:3px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);overflow-wrap:anywhere;max-width:100%}
+.pv li span{margin-left:6px;color:var(--text3)}
 .sumlist{margin:6px 0 0;padding:0;list-style:none}
 .sumlist li{padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
 .sumlist li span:last-child{color:var(--text3);white-space:nowrap}
@@ -197,10 +200,14 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
     s = String(s == null ? '' : s).replace(/[\u0000-\u001F\u007F\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
     return max ? Array.from(s).slice(0, max).join('') : s;
   }
-  function z2h(s) { // 全角の数字・記号を半角に
+  function z2h(s) { // 全角の数字・カンマ・円記号・空白を半角に（品名の「、」は変えない）
     return String(s).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
-      .replace(/[，、]/g, ',').replace(/[￥]/g, '¥').replace(/[　]/g, ' ');
+      .replace(/[，]/g, ',').replace(/[￥]/g, '¥').replace(/[　]/g, ' ');
   }
+  function z2hAll(s) { // コードの読み込み用: 全角の英数字・記号をすべて半角に
+    return String(s).replace(/[！-～]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+  }
+  function dict() { return Object.create(null); }
   function yen(n) { return n.toLocaleString('ja-JP') + '円'; }
   function num(n) { return n.toLocaleString('ja-JP'); }
   function fnv(str) {
@@ -223,10 +230,13 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
   function makeCode(prefix, obj) { var body = b64e(obj); return prefix + '.' + body + '.' + fnv(body); }
   // 貼られた文から、コードを探して中身を返す。{ok, kind, obj, msg}
   function readCode(text) {
-    var t = z2h(String(text || '')).replace(/[\s　。．・「」『』"'“”‘’]/g, '');
+    var t = z2hAll(String(text || '')).replace(/[\s　。・「」『』"'“”‘’]/g, '');
     var m = t.match(/TN([LR])1\.([A-Za-z0-9_-]+)\.([0-9a-z]+)/);
     if (!m) return { ok: false, msg: 'コードが見つかりません。「TNL1.」または「TNR1.」で始まる文字を、全部コピーして貼ってください。' };
-    if (fnv(m[2]) !== m[3]) return { ok: false, msg: 'コードが途中で切れているか、文字が変わっています。送られてきたコードを、最初から最後まで全部コピーしてもう一度貼ってください。' };
+    // コードのすぐ後ろに英数字（時刻・URLなど）がつながっていても読めるように、確かめ用の長さを探す
+    var want = fnv(m[2]), okc = false;
+    for (var k = Math.min(m[3].length, 7); k >= 1; k--) if (m[3].slice(0, k) === want) { okc = true; break; }
+    if (!okc) return { ok: false, msg: 'コードが途中で切れているか、文字が変わっています。送られてきたコードを、最初から最後まで全部コピーしてもう一度貼ってください。' };
     var obj;
     try { obj = b64d(m[2]); } catch (e) { return { ok: false, msg: 'コードを読めませんでした。送られてきたコードを、もう一度全部コピーして貼ってください。' }; }
     return { ok: true, kind: m[1] === 'L' ? 'list' : 'result', obj: obj };
@@ -242,7 +252,7 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
       var sh = o.s[a];
       if (!sh || typeof sh.n !== 'string' || !Array.isArray(sh.i) || sh.i.length < 1) return null;
       var n = clean(sh.n, LIM.shelfName); if (!n) return null;
-      var seen = {}, items = [];
+      var seen = dict(), items = [];
       for (var b = 0; b < sh.i.length; b++) {
         var it = sh.i[b];
         if (!Array.isArray(it) || typeof it[0] !== 'string') return null;
@@ -263,18 +273,20 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
 
   // 品目欄の1行を読む: 行の最後が数字なら単価
   function parseLine(line) {
-    var raw = clean(z2h(line));
+    var raw = clean(line);
     if (!raw) return null;
-    // 「名前 900」「名前 900円」「名前 ¥1,200」「名前¥900」。名前と数字の間に空白か¥が要る
-    var m = raw.match(/^(.+?)(?:\s+[¥\\]?|[¥\\])\s*([0-9][0-9,]*)\s*円?$/);
+    // 「名前 900」「名前 900円」「名前 ¥1,200」「名前¥900」。名前と数字の間に空白か¥が要る。
+    // カンマは3桁区切りの形（1,200）だけを認める（「1,2」は単価にしない）
+    var h = z2h(raw);
+    var m = h.match(/^(.+?)(?:\s+[¥\\]?|[¥\\])\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*円?$/);
     if (m) {
-      var p = parseInt(m[2].replace(/,/g, ''), 10), name = clean(m[1]);
+      var p = parseInt(m[2].replace(/,/g, ''), 10), name = clean(Array.from(raw).slice(0, Array.from(m[1]).length).join(''));
       if (name && !isNaN(p)) return { name: name, price: p };
     }
     return { name: raw, price: null };
   }
   function parseDraftShelf(d) {
-    var lines = String(d.text || '').split(/\r?\n/), items = [], errs = [], seen = {};
+    var lines = String(d.text || '').split(/\r?\n/), items = [], errs = [], seen = dict();
     lines.forEach(function (ln) {
       var r = parseLine(ln); if (!r) return;
       if (Array.from(r.name).length > LIM.itemName) errs.push('「' + Array.from(r.name).slice(0, 12).join('') + '…」は' + LIM.itemName + '字までです');
@@ -335,7 +347,8 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
   // result = { v:1, l:listHash, n:'名前', d:'端末番号', t:秒, c:[ [棚番号,[数...]], ... ] }
   function myResultObj() {
     var c = [];
-    S.list.s.forEach(function (sh, si) { if (S.done[si]) c.push([si, sh.i.map(function (_, ii) { var v = S.counts[si] && S.counts[si][ii]; return v == null ? 0 : v; })]); });
+    // [棚番号, [数...], 空欄の数]。空欄は0として送り、何品目が空欄だったかも添える
+    S.list.s.forEach(function (sh, si) { if (S.done[si]) c.push([si, myDoneCounts(si), myBlanks(si)]); });
     return { v: 1, l: listHash(S.list), n: S.me, d: S.dev, t: Math.floor(Date.now() / 1000), c: c };
   }
   // 戻り: {n,d,t,s:{si:[...]},raw} または null。silent=false のときは理由を投げる
@@ -343,14 +356,16 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
     function bad(msg) { if (silent) return null; throw new Error(msg); }
     if (!o || o.v !== 1 || typeof o.l !== 'string' || typeof o.d !== 'string' || !/^[a-z0-9]{8}$/.test(o.d) || !Array.isArray(o.c) || typeof o.t !== 'number') return bad('結果コードの形が違います。');
     if (o.l !== listHash(list)) return bad('この端末の棚リストと、相手の棚リストが違います。\n棚リストを作り直したか、別の棚卸しの結果です。同じ棚リストのコードを読み込んでから数えてもらってください。');
-    var s = {};
+    var s = {}, bl = {};
     for (var i = 0; i < o.c.length; i++) {
       var e = o.c[i];
       if (!Array.isArray(e) || !isInt(e[0], 0, list.s.length - 1) || !Array.isArray(e[1]) || e[1].length !== list.s[e[0]].i.length) return bad('結果コードの中身が棚リストと合いません。');
       for (var j = 0; j < e[1].length; j++) if (!isInt(e[1][j], 0, LIM.count)) return bad('結果コードの数が読めません。');
+      if (e.length > 2 && !isInt(e[2], 0, e[1].length)) return bad('結果コードの中身が棚リストと合いません。');
       s[e[0]] = e[1].slice();
+      bl[e[0]] = e.length > 2 ? e[2] : 0;
     }
-    return { n: clean(o.n, LIM.me), d: o.d, t: o.t, s: s, raw: o };
+    return { n: clean(o.n, LIM.me), d: o.d, t: o.t, s: s, bl: bl, raw: o };
   }
 
   // ---------- 合算 ----------
@@ -360,29 +375,32 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
     return { me: me, p: p };
   }
   function myDoneCounts(si) { return S.list.s[si].i.map(function (_, ii) { var v = S.counts[si] && S.counts[si][ii]; return v == null ? 0 : v; }); }
+  function myBlanks(si) { return S.list.s[si].i.filter(function (_, ii) { return !S.counts[si] || S.counts[si][ii] == null; }).length; }
+  function blankNote(bl, len) { return !bl ? '' : (bl === len ? '（全部空欄＝0として）' : '（空欄' + bl + '品目は0として）'); }
   function merge() {
     var L = S.list, res = [], nm = names();
     L.s.forEach(function (sh, si) {
       var a = S.done[si] ? myDoneCounts(si) : null;
       var b = S.partner && S.partner.s[si] ? S.partner.s[si] : null;
-      var r = { si: si, name: sh.n, a: a, b: b, use: null, st: 'none', who: '' };
+      var blA = a ? myBlanks(si) : 0, blB = b ? (S.partner.bl[si] || 0) : 0, len = sh.i.length;
+      var r = { si: si, name: sh.n, a: a, b: b, use: null, st: 'none', who: '', empty: false };
       if (a && b) {
         var sig = JSON.stringify([a, b]), pk = S.pick[si];
-        if (pk && pk.sig === sig) { r.st = 'adopted'; r.use = pk.who === 'me' ? a : b; r.who = (pk.who === 'me' ? nm.me : nm.p) + 'の数を採用'; }
+        if (pk && pk.sig === sig) { r.st = 'adopted'; r.use = pk.who === 'me' ? a : b; r.who = (pk.who === 'me' ? nm.me : nm.p) + 'の数を採用' + blankNote(pk.who === 'me' ? blA : blB, len); r.empty = (pk.who === 'me' ? blA : blB) === len; }
         else { r.st = 'review'; r.who = nm.me + 'と' + nm.p + 'が2人とも数えました（合計に入っていません）'; }
-      } else if (a) { r.st = 'one'; r.use = a; r.who = nm.me + 'が数えました'; }
-      else if (b) { r.st = 'one'; r.use = b; r.who = nm.p + 'が数えました'; }
+      } else if (a) { r.st = 'one'; r.use = a; r.who = nm.me + 'が数えました' + blankNote(blA, len); r.empty = blA === len; }
+      else if (b) { r.st = 'one'; r.use = b; r.who = nm.p + 'が数えました' + blankNote(blB, len); r.empty = blB === len; }
       res.push(r);
     });
     // 品目ごとの合計（棚をまたいで同じ名前を足す）
-    var order = [], map = {};
+    var order = [], map = dict();
     res.forEach(function (r) {
       if (!r.use) return;
       L.s[r.si].i.forEach(function (it, ii) {
         var k = it[0], q = r.use[ii];
-        if (!map[k]) { map[k] = { name: k, qty: 0, amount: 0, prices: {}, noPrice: false }; order.push(k); }
+        if (!map[k]) { map[k] = { name: k, qty: 0, amount: 0, prices: dict(), qtyNoPrice: 0, noPrice: false }; order.push(k); }
         var m = map[k]; m.qty += q;
-        if (it[1] === null) m.noPrice = true; else { m.amount += q * it[1]; m.prices[it[1]] = 1; }
+        if (it[1] === null) { m.noPrice = true; m.qtyNoPrice += q; } else { m.amount += q * it[1]; m.prices[it[1]] = 1; }
       });
     });
     var rows = order.map(function (k) { return map[k]; }), total = 0, anyNoPrice = false;
@@ -390,8 +408,17 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
     return {
       shelves: res, rows: rows, total: total, anyNoPrice: anyNoPrice,
       review: res.filter(function (r) { return r.st === 'review'; }),
-      none: res.filter(function (r) { return r.st === 'none'; })
+      none: res.filter(function (r) { return r.st === 'none'; }),
+      empty: res.filter(function (r) { return r.empty; })
     };
+  }
+  // 品目の単価の説明（表とコピーで共通）
+  function priceInfo(m) {
+    var ps = Object.keys(m.prices).map(Number);
+    if (!ps.length) return { label: '', copy: '', amount: null };
+    var part = m.noPrice ? '（単価なしの棚の' + num(m.qtyNoPrice) + '個は金額に入っていません）' : '';
+    if (ps.length === 1) return { label: '単価 ' + yen(ps[0]) + part, copy: m.noPrice ? ps[0] + '（一部単価なし）' : ps[0], amount: m.amount };
+    return { label: '単価が棚で違う' + part, copy: '棚で違う' + (m.noPrice ? '（一部単価なし）' : ''), amount: m.amount };
   }
   var ST_LABEL = { review: '2人とも数えた・要確認', adopted: '2人とも数えた・採用済み', one: '1人だけ数えた', none: 'どちらもまだ' };
 
@@ -492,22 +519,24 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
         S.draft = S.list.s.map(function (sh) { return { name: sh.n, text: sh.i.map(function (it) { return it[0] + (it[1] !== null ? ' ' + it[1] : ''); }).join('\n') }; });
         S.editing = true; save(); render();
       } }));
+      P.appendChild(el('h2', { text: '相手から新しい棚リストのコードが届いたら' }));
+      P.appendChild(listImportBox());
+      P.appendChild(el('h2', { text: '来年また使うとき・数え直すとき' }));
+      P.appendChild(el('p', { cls: 'hint', text: '棚リストは残して、この端末で数えた数・数え終わった印・相手の結果・採用の選択だけを消します。' }));
+      P.appendChild(el('button', { type: 'button', cls: 'btn danger', text: '数と相手の結果を消す（棚リストは残す）', onclick: function () {
+        confirmBox('この端末で数えた数・数え終わった印・相手の結果・採用の選択を消します。棚リストは残ります。\n元に戻せません。よろしいですか？', '消す', function () {
+          S.counts = {}; S.done = {}; S.partner = null; S.pick = {}; save(); render(); toast('数と相手の結果を消しました（棚リストは残っています）');
+        });
+      } }));
       return;
     }
     if (!S.list) {
       P.appendChild(el('h2', { text: '相手から棚リストのコードが届いたら' }));
-      var box = el('div', { cls: 'box' });
-      var ta = el('textarea', { cls: 'code notranslate', translate: 'no', id: 'inList', 'aria-label': '棚リストのコードを貼る', placeholder: 'TNL1. で始まるコードを貼る', spellcheck: 'false' });
-      var msg = el('p', { cls: 'err', role: 'alert' });
-      box.appendChild(el('label', { cls: 'lbl', for: 'inList', text: '棚リストのコードを貼る' }));
-      box.appendChild(ta);
-      box.appendChild(el('button', { type: 'button', cls: 'btn', text: '読み込む', onclick: function () { importList(ta.value, msg); } }));
-      box.appendChild(msg);
-      P.appendChild(box);
+      P.appendChild(listImportBox());
       P.appendChild(el('h2', { text: '新しく作る（1台だけで作ります）' }));
     } else {
       P.appendChild(el('h2', { text: '棚リストを直す' }));
-      P.appendChild(el('p', { cls: 'hint', text: '中身を変えると、数えた数と相手の結果は消えます（相手にも新しいコードを送り直します）。' }));
+      P.appendChild(el('p', { cls: 'hint', text: '中身を変えると、この端末で数えた数と相手の結果は消えます。新しい棚リストのコードを相手に送り直し、相手もそのコードを読み込んで数え直すことになります。' }));
     }
     P.appendChild(el('p', { cls: 'hint', text: '棚ごとに名前を付け、品目を1行に1つ書きます。行の最後に数字があれば単価として読みます（例: 「手ぬぐい 900」「ノート A5 280円」）。単価はなくてもかまいません。売り場と倉庫に同じ品目があるときは、同じ名前で書くと合算で足されます。' }));
     var wrap = el('div', { id: 'drafts' });
@@ -524,11 +553,23 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
     if (S.list) P.appendChild(el('button', { type: 'button', cls: 'btn sub', text: '直さずに戻る', onclick: function () { S.editing = false; save(); render(); } }));
     P.appendChild(emsg);
   }
+  function listImportBox() {
+    var box = el('div', { cls: 'box' });
+    var ta = el('textarea', { cls: 'code notranslate', translate: 'no', id: 'inList', 'aria-label': '棚リストのコードを貼る', placeholder: 'TNL1. で始まるコードを貼る', spellcheck: 'false' });
+    var msg = el('p', { cls: 'err', role: 'alert' });
+    box.appendChild(el('label', { cls: 'lbl', for: 'inList', text: '棚リストのコードを貼る' }));
+    box.appendChild(ta);
+    box.appendChild(el('button', { type: 'button', cls: 'btn', text: '読み込む', onclick: function () { importList(ta.value, msg); } }));
+    box.appendChild(msg);
+    return box;
+  }
   function draftShelf(d, i) {
-    var parsedP = el('p', { cls: 'parsed' });
+    var parsedP = el('p', { cls: 'parsed' }), pv = el('ul', { cls: 'pv', 'aria-label': '読み取った品目と単価' });
     function upd() {
       var r = parseDraftShelf(d), wp = r.items.filter(function (x) { return x.price !== null; }).length;
-      parsedP.textContent = '品目' + r.items.length + (wp ? '・単価あり' + wp : '') + (r.errs.length ? '　⚠ ' + r.errs[0] : '');
+      parsedP.textContent = '読み取り: 品目' + r.items.length + (wp ? '・単価あり' + wp : '') + (r.errs.length ? '　⚠ ' + r.errs[0] : '') + (r.items.length ? '（行の最後の数字を単価として読んでいます。品名の一部なら、数字のあとに「個」などを付けてください）' : '');
+      pv.textContent = '';
+      r.items.forEach(function (x) { pv.appendChild(el('li', {}, [x.name, el('span', { text: x.price === null ? '単価なし' : yen(x.price) })])); });
     }
     var nameIn = el('input', { type: 'text', id: 'dn' + i, maxlength: '40', autocomplete: 'off', placeholder: '例：倉庫1', oninput: function () { d.name = nameIn.value; save(); } });
     nameIn.value = d.name;
@@ -541,11 +582,11 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
     upd();
     return el('div', { cls: 'box shelf-ed' }, [
       el('div', { cls: 'top' }, [el('div', {}, [el('label', { cls: 'lbl', for: 'dn' + i, text: '棚' + (i + 1) + 'の名前' }), nameIn]), del]),
-      ta, parsedP
+      ta, parsedP, pv
     ]);
   }
   function buildList(msgEl) {
-    var errs = [], out = { v: 1, s: [] }, total = 0, names = {};
+    var errs = [], out = { v: 1, s: [] }, total = 0, names = dict();
     S.draft.forEach(function (d, i) {
       var n = clean(d.name), r = parseDraftShelf(d);
       if (!n && !r.items.length) return; // まったく空の棚は無視
@@ -575,7 +616,7 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
       if (!S.list || listHash(S.list) !== listHash(L)) { S.counts = {}; S.done = {}; S.partner = null; S.pick = {}; }
       S.list = L; S.editing = false; save(); render(); window.scrollTo(0, 0); toast(okMsg);
     };
-    if (S.list && listHash(S.list) !== listHash(L) && hasWork()) confirmBox('棚リストの中身が変わります。\nこの端末で数えた数と、読み込んだ相手の結果は消えます。よろしいですか？', '変える', apply);
+    if (S.list && listHash(S.list) !== listHash(L) && hasWork()) confirmBox('棚リストの中身が変わります。\nこの端末で数えた数と、読み込んだ相手の結果は消えます。相手も新しい棚リストのコードを読み込んで、数え直すことになります。よろしいですか？', '変える', apply);
     else apply();
   }
   function importList(text, msgEl) {
@@ -627,9 +668,10 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
       ]));
     });
     var doneBtn = el('button', { type: 'button', cls: 'btn', id: 'db' + si, onclick: function () {
-      if (S.done[si]) delete S.done[si]; else S.done[si] = true;
-      save(); refreshCountBits();
-      if (S.done[si]) toast('「' + sh.n + '」を数え終わった棚にしました');
+      var mark = function () { S.done[si] = true; save(); refreshCountBits(); toast('「' + sh.n + '」を数え終わった棚にしました'); };
+      if (S.done[si]) { delete S.done[si]; save(); refreshCountBits(); return; }
+      if (myBlanks(si) === sh.i.length) confirmBox('「' + sh.n + '」は、まだ1つも数が入っていません。\n全部0個として「数え終わった」にしますか？（相手の画面でも「1人が数えた棚」として合計に入ります）', '0個で数え終わった', mark);
+      else mark();
     } });
     box.appendChild(el('div', { cls: 'foot' }, [doneBtn, el('p', { cls: 'blanks', id: 'bl' + si })]));
     return box;
@@ -675,7 +717,8 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
       var pc = Object.keys(S.partner.s).length, pi = 0;
       Object.keys(S.partner.s).forEach(function (k) { pi += S.partner.s[k].length; });
       var dt = new Date(S.partner.t * 1000);
-      box.appendChild(el('p', { cls: 'partner' }, [el('b', { text: nm.p }), 'の結果：数え終わった棚 ' + pc + '／' + S.list.s.length + '・品目 ' + pi + '（' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + dt.getHours() + ':' + String(dt.getMinutes()).padStart(2, '0') + '時点）']));
+      box.appendChild(el('p', { cls: 'partner' }, [el('b', { text: nm.p }), 'の結果：数え終わった棚 ' + pc + '／' + S.list.s.length + '・品目 ' + pi + '（' + dt.getFullYear() + '/' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + dt.getHours() + ':' + String(dt.getMinutes()).padStart(2, '0') + '時点）']));
+      if (Date.now() / 1000 - S.partner.t > 30 * 86400) box.appendChild(el('p', { cls: 'err', text: 'この結果は30日以上前のものです。去年の棚卸しの結果が残っていないか確かめてください。' }));
       box.appendChild(el('button', { type: 'button', cls: 'btn danger', text: nm.p + 'の結果を外す', onclick: function () {
         confirmBox(nm.p + 'の結果を外します。採用の選択も消えます。', '外す', function () { S.partner = null; S.pick = {}; save(); render(); });
       } }));
@@ -736,15 +779,16 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
       if (M.none.length) w.push('まだ数えていない棚が' + M.none.length + 'つ（' + M.none.map(function (r) { return r.name; }).join('・') + '）');
       P.appendChild(el('p', { cls: 'warnbar', id: 'warnbar', text: w.join('、') + 'あります。この棚の数は合計に入っていません。' }));
     }
+    if (M.empty.length) P.appendChild(el('p', { cls: 'warnbar', text: '「数え終わった」なのに、数が全部空欄の棚があります（' + M.empty.map(function (r) { return r.name; }).join('・') + '）。0個として合計に入っています。数え忘れでないか確かめてください。' }));
     if (!M.rows.length) P.appendChild(el('p', { cls: 'empty', text: '合計に入る棚がまだありません。' }));
     else {
       var body = el('tbody');
       M.rows.forEach(function (m) {
-        var ps = Object.keys(m.prices).map(Number), up = ps.length === 1 && !m.noPrice ? '単価 ' + yen(ps[0]) : (ps.length > 1 ? '単価が棚で違う' : (ps.length && m.noPrice ? '単価なしの棚あり' : ''));
+        var pi = priceInfo(m);
         body.appendChild(el('tr', {}, [
-          el('td', {}, [m.name, up ? el('span', { cls: 'up', text: up }) : null]),
+          el('td', {}, [m.name, pi.label ? el('span', { cls: 'up', text: pi.label }) : null]),
           el('td', { text: num(m.qty) }),
-          el('td', { text: ps.length ? yen(m.amount) : '—' })
+          el('td', { text: pi.amount === null ? '—' : yen(pi.amount) })
         ]));
       });
       P.appendChild(el('div', { cls: 'totals' }, [el('table', {}, [
@@ -762,15 +806,18 @@ tr.diff td:first-child::after{content:" ≠";font-weight:700;color:var(--danger)
     var d = new Date(), nm = names(), lines = [];
     lines.push('年末棚卸しの合算（' + d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') + '）');
     lines.push(['品目', '合計数', '単価', '金額'].join('\t'));
+    // 表計算に貼ったとき式として読まれないように、=+-@ で始まる品名の前に ' を付ける
+    function cell(s) { s = String(s); return /^[=+\-@]/.test(s) ? "'" + s : s; }
     M.rows.forEach(function (m) {
-      var ps = Object.keys(m.prices).map(Number);
-      lines.push([m.name, m.qty, ps.length === 1 && !m.noPrice ? ps[0] : (ps.length ? '棚で違う' : ''), ps.length ? m.amount : ''].join('\t'));
+      var pi = priceInfo(m);
+      lines.push([cell(m.name), m.qty, pi.copy, pi.amount === null ? '' : pi.amount].join('\t'));
     });
     lines.push(['総額', '', '', M.total].join('\t'));
-    if (M.anyNoPrice) lines.push('※単価のない品目は総額に入っていません');
+    if (M.anyNoPrice) lines.push('※単価のない棚の品目は、金額・総額に入っていません');
+    if (M.empty.length) lines.push('※数え終わったのに全部空欄（0個として計算）: ' + M.empty.map(function (r) { return r.name; }).join('・'));
     lines.push('要確認（合計に入っていません）: ' + (M.review.length ? M.review.map(function (r) { return r.name; }).join('・') : 'なし'));
     lines.push('まだ数えていない棚: ' + (M.none.length ? M.none.map(function (r) { return r.name; }).join('・') : 'なし'));
-    var by = M.shelves.filter(function (r) { return r.st === 'one' || r.st === 'adopted'; }).map(function (r) { return r.name + '＝' + r.who.replace(/が数えました$/, ''); });
+    var by = M.shelves.filter(function (r) { return r.st === 'one' || r.st === 'adopted'; }).map(function (r) { return r.name + '＝' + r.who.replace('が数えました', ''); });
     if (by.length) lines.push('合計に入れた棚: ' + by.join('／'));
     return lines.join('\n');
   }
